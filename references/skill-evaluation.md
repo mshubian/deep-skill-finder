@@ -1,6 +1,6 @@
 # Skill 使用评价
 
-只在用户同意评价或主动要求评价时读取本文件。最终评价信息只有四个字段：`usageScenario`（使用场景）、`skillPerformance`（技能实际工作情况）、`rating`（用户评分）和 `comment`（用户评语）。前两项由 Agent 根据真实执行自动分析，用户必须提供满分 10 分制下的 1–10 分评分，评语可选。
+只在用户同意评价或主动要求评价时读取本文件。最终评价信息包含四个核心字段：`usageScenario`（使用场景）、`skillPerformance`（技能实际工作情况）、`rating`（用户评分）和 `comment`（用户评语），以及可选的 `attachments`（图片/视频附件）。前两项由 Agent 根据真实执行自动分析，用户必须提供满分 10 分制下的 1–10 分评分，评语可选。
 
 ## 1. 确定具体使用场景
 
@@ -93,8 +93,12 @@
 > 【评价】{基于目标有效性、执行可靠性、结果质量、使用效率中有证据维度的判断，以及综合贡献结论}
 >
 > 请检查以上使用场景和技能表现是否需要修改，以及是否包含任何敏感信息。若无需修改，请按满分 10 分给出 1–10 分；也可以附上一段评语（可选）。若需要修改，请直接指出。
+>
+> 如果有截图或录屏能辅助说明这个 Skill 的表现，请提供本地文件路径（可多个，支持图片和视频）；没有则直接评分即可。注意：附件中请勿包含敏感信息，上传时只会使用文件名，不会包含本地路径。
+>
+> 关于附件大小：你只需收集本地路径并传给 `upload --attachment <路径>`，脚本会自动处理——小于 50 KB 的文件会内嵌到 JSON，大于等于 50 KB 的文件会通过服务端中转上传。服务端对单张图片上限 10 MB、单个视频上限 100 MB。如果用户提供的图片超过 10 MB，请主动压缩或缩小尺寸后再上传；视频超过 100 MB 则请用户换一段更短的录屏。
 
-除上述两个字段和检查、评分提示外，不添加其他正文。
+除上述字段和检查、评分提示外，不添加其他正文。
 
 记住本次已经展示给用户的两个字段，并按以下规则处理：
 
@@ -109,7 +113,7 @@ Agent 可以修正明显错别字或轻度压缩评语，但不得改变倾向�
 
 ```json
 {
-  "schemaVersion": "1.4",
+  "schemaVersion": "1.5",
   "skill": {
     "name": "skill-name",
     "version": null,
@@ -126,13 +130,34 @@ Agent 可以修正明显错别字或轻度压缩评语，但不得改变倾向�
     "occurredAt": "ISO-8601 日期，默认只保留日期粒度",
     "trajectoryIdHash": "可选；只允许不可逆哈希",
     "estimatedTokenUsage": 1500
-  }
+  },
+  "attachments": [
+    {
+      "type": "inline",
+      "name": "screenshot.png",
+      "mimeType": "image/png",
+      "size": 40960,
+      "sha256": "a1b2c3...",
+      "data": "iVBORw0KGgo..."
+    },
+    {
+      "type": "storage",
+      "name": "recording.mp4",
+      "mimeType": "video/mp4",
+      "size": 1048576,
+      "sha256": "d4e5f6...",
+      "storageKey": "attachments/2026/09/17/<feedback-id>/recording.mp4"
+    }
+  ]
 }
 ```
 
-`evaluation` 必须且只能包含上述四个字段。`usageScenario`、`skillPerformance` 和 `rating` 必填；`rating` 必须是 1–10 分。`comment` 字段必须存在，但用户未提供时值为 `null`。`trajectoryIdHash` 不得使用本地路径或原始会话标识代替。        
-`context` 为可选对象。
-`estimatedTokenUsage` 为可选非负整数，指的是该skill这次完整执行整体token的消耗，由Agent在技能执行完成根据trace信息或根据执行规模预估一下，若难以估计可设为 `null`。该字段不属于敏感信息，但会随评价一起上传。          
+`evaluation` 必须且只能包含上述四个字段。`usageScenario`、`skillPerformance` 和 `rating` 必填；`rating` 必须是 1–10 分。`comment` 字段必须存在，但用户未提供时值为 `null`。`trajectoryIdHash` 不得使用本地路径或原始会话标识代替。
+
+`attachments` 为可选数组。每个附件必须包含 `type`（`inline` 或 `storage`）、`name`（仅文件名）、`mimeType`（仅限 `image/*` 或 `video/*`）、`size` 和 `sha256`。`inline` 类型需额外包含 base64 编码的 `data`；`storage` 类型需额外包含 `storageKey`。
+
+`context` 为可选对象。`estimatedTokenUsage` 为可选非负整数，指的是该skill这次完整执行整体token的消耗，由Agent在技能执行完成根据trace信息或根据执行规模预估一下，若难以估计可设为 `null`。该字段不属于敏感信息，但会随评价一起上传。 
+       
 
 ## 6. 脱敏、确认与上传
 
@@ -163,8 +188,25 @@ python3 {skill_dir}/scripts/skill_feedback.py redact \
 python3 {skill_dir}/scripts/skill_feedback.py upload \
   --input <sanitized.json> \
   --confirmed \
-  --outbox ~/.deep_skill_finder/feedback/outbox.jsonl
+  --outbox ~/.deep_skill_finder/feedback/outbox.jsonl \
+  --attachment /path/to/screenshot.png \
+  --attachment /path/to/recording.mp4
 ```
+
+`--attachment` 可重复，用于附加本地图片或视频文件。Agent 只需把用户提供的本地路径原样传入，脚本会自动按大小分流：
+
+- 小于 50 KB：base64 内嵌到 JSON 负载（`type: "inline"`）；
+- 大于等于 50 KB：通过 `POST /api/v1/skill-feedback/attachments/upload` 服务端中转上传到对象存储（`type: "storage"`）。
+
+服务端硬性大小限制：
+
+| 类型 | 最大大小 |
+|------|----------|
+| inline | 50 KB |
+| 图片 | 10 MB |
+| 视频 | 100 MB |
+
+如果某张图片超过 10 MB，Agent 应在调用 `upload` 前先压缩/缩小尺寸；如果某个视频超过 100 MB，则请用户换一段更短的录屏。不提供附件时命令行为与之前完全一致。
 
 `upload` 命令从 `--input` 读取单条评价记录，上传到远程服务器。该命令要求 `--confirmed` 以确保用户已确认评价内容，且执行完整的校验和确定性脱敏检查——如果脱敏后发现内容有变化（说明含未脱敏的敏感信息），上传将被拒绝（退出码 3）。
 

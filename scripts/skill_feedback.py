@@ -11,8 +11,10 @@ a remote server after the same validation and redaction checks as ``submit``.
 from __future__ import annotations
 
 import argparse
+import base64
 import hashlib
 import json
+import mimetypes
 import os
 import re
 import sys
@@ -45,8 +47,8 @@ def get_client_id() -> str:
         return ""
 
 
-SCHEMA_VERSION = "1.4"
-LEGACY_SCHEMA_VERSIONS = {"1.3"}
+SCHEMA_VERSION = "1.5"
+LEGACY_SCHEMA_VERSIONS = {"1.3", "1.4"}
 MAX_PAYLOAD_BYTES = 200_000
 CODEX_PROVIDER_ID = "codex-jsonl"
 
@@ -54,6 +56,29 @@ CODEX_PROVIDER_ID = "codex-jsonl"
 FEEDBACK_API_URL = "https://www.deepskill.market/api/v1/skill-feedback"
 FEEDBACK_API_TIMEOUT = 30
 APP_CONFIG_PATH = Path.home() / ".meyo_agent" / "app.config.json"
+
+# 附件上传配置
+ATTACHMENT_SIZE_THRESHOLD = 50 * 1024  # 50 KB；小于此值 inline base64，大于等于此值走服务端中转上传
+MAX_ATTACHMENT_SIZE = 100 * 1024 * 1024  # 100 MB 整体上限
+MAX_IMAGE_SIZE = 10 * 1024 * 1024        # 服务端对单张图片的限制
+MAX_VIDEO_SIZE = 100 * 1024 * 1024       # 服务端对单个视频的限制
+ATTACHMENT_UPLOAD_PATH = "/attachments/upload"
+ALLOWED_ATTACHMENT_MIME_PREFIXES = ("image/", "video/")
+# 部分 Agent runtime 的 mimetypes 数据库不完整，补一个常见图像/视频 fallback
+ATTACHMENT_MIME_FALLBACK = {
+    ".png": "image/png",
+    ".jpg": "image/jpeg",
+    ".jpeg": "image/jpeg",
+    ".gif": "image/gif",
+    ".webp": "image/webp",
+    ".bmp": "image/bmp",
+    ".svg": "image/svg+xml",
+    ".mp4": "video/mp4",
+    ".mov": "video/quicktime",
+    ".webm": "video/webm",
+    ".avi": "video/x-msvideo",
+    ".mkv": "video/x-matroska",
+}
 
 EXPLICIT_SKILL_RE = re.compile(r"(?<![\w-])\$([A-Za-z0-9][A-Za-z0-9:_-]{0,127})")
 QUOTED_SKILL_PATH_RE = re.compile(r"[\"']([^\"'\r\n]+[/\\]SKILL\.md)[\"']")
@@ -361,6 +386,9 @@ def sanitize_value(value: Any, key: str | None = None) -> Any:
     if key and _normalized_key(key) in SENSITIVE_KEYS and value not in (None, "", [], {}):
         return "[REDACTED_SECRET]"
     if isinstance(value, str):
+        # storageKey 是服务端生成的对象存储路径，可能包含 UUID 段，不应被 UUID_RE 误伤
+        if key and _normalized_key(key) == "storagekey":
+            return value
         return sanitize_text(value)
     if isinstance(value, list):
         return [sanitize_value(item) for item in value]
@@ -377,6 +405,244 @@ def _walk_keys(value: Any) -> Iterable[str]:
     elif isinstance(value, list):
         for child in value:
             yield from _walk_keys(child)
+
+
+def _guess_mime_type(path: Path) -> str:
+    """猜测文件 MIME 类型，优先使用系统 mimetypes，fallback 到内置映射。"""
+    mime, _ = mimetypes.guess_type(str(path))
+    if mime:
+        return mime
+    return ATTACHMENT_MIME_FALLBACK.get(path.suffix.lower(), "application/octet-stream")
+
+
+def _sha256_file(path: Path) -> str:
+    """以流式方式计算文件 SHA-256。"""
+    hasher = hashlib.sha256()
+    with path.open("rb") as handle:
+        while True:
+            chunk = handle.read(8192)
+            if not chunk:
+                break
+            hasher.update(chunk)
+    return hasher.hexdigest()
+
+
+def _encode_inline_attachment(path: Path) -> dict[str, Any]:
+    """将小文件编码为 inline base64 附件对象。"""
+    data = path.read_bytes()
+    return {
+        "type": "inline",
+        "name": path.name,
+        "mimeType": _guess_mime_type(path),
+        "size": len(data),
+        "sha256": hashlib.sha256(data).hexdigest(),
+        "data": base64.b64encode(data).decode("ascii"),
+    }
+
+
+def _build_multipart_body(
+    fields: dict[str, str],
+    files: list[tuple[str, str, bytes, str]],
+) -> tuple[bytes, str]:
+    """构造 multipart/form-data 请求体。
+
+    files 格式: [(field_name, filename, content_bytes, mime_type), ...]
+    支持同名字段重复出现（如多个 files）。
+    返回: (body_bytes, boundary)
+    """
+    boundary = "----DeepSkillFinderBoundary" + uuid.uuid4().hex
+    lines: list[bytes] = []
+
+    for name, value in fields.items():
+        lines.append(f"--{boundary}".encode())
+        lines.append(f'Content-Disposition: form-data; name="{name}"'.encode())
+        lines.append(b"")
+        lines.append(value.encode("utf-8"))
+
+    for name, filename, content, mime_type in files:
+        lines.append(f"--{boundary}".encode())
+        lines.append(
+            f'Content-Disposition: form-data; name="{name}"; filename="{filename}"'.encode()
+        )
+        lines.append(f"Content-Type: {mime_type}".encode())
+        lines.append(b"")
+        lines.append(content)
+
+    lines.append(f"--{boundary}--".encode())
+    lines.append(b"")
+
+    body = b"\r\n".join(lines)
+    return body, boundary
+
+
+def _upload_attachments_via_server_batch(
+    items: list[tuple[Path, dict[str, Any]]],
+    api_url: str,
+    token: str,
+    feedback_id: str,
+) -> dict[str, dict[str, Any]]:
+    """通过服务端中转接口批量上传大文件。
+
+    items: [(path, metadata), ...], metadata 包含 filename, mimeType, size, sha256
+    返回: {sha256: uploaded_metadata}
+    """
+    if not items:
+        return {}
+
+    url = api_url.rstrip("/") + ATTACHMENT_UPLOAD_PATH
+
+    fields = {}
+    if feedback_id:
+        fields["feedbackId"] = feedback_id
+
+    files: list[tuple[str, str, bytes, str]] = []
+    for path, metadata in items:
+        content = path.read_bytes()
+        files.append(("files", metadata["filename"], content, metadata["mimeType"]))
+
+    body, boundary = _build_multipart_body(fields, files)
+
+    headers = {
+        "User-Agent": "deep-skill-finder/1.0",
+        "Content-Type": f"multipart/form-data; boundary={boundary}",
+        "X-Client-Id": get_client_id(),
+        "Content-Length": str(len(body)),
+    }
+    if token:
+        headers["Authorization"] = f"Bearer {token}"
+
+    req = urllib.request.Request(url, data=body, headers=headers, method="POST")
+    try:
+        with urllib.request.urlopen(req, timeout=FEEDBACK_API_TIMEOUT) as resp:
+            raw = resp.read()
+            try:
+                result = json.loads(raw)
+            except (json.JSONDecodeError, ValueError) as e:
+                raise RuntimeError(f"attachment upload endpoint returned non-JSON: {e}") from e
+            if not isinstance(result, dict):
+                raise RuntimeError("attachment upload endpoint returned non-object JSON")
+
+            code = result.get("code")
+            if code != 200:
+                message = result.get("message", f"HTTP {code}")
+                raise RuntimeError(f"attachment upload failed: {message}")
+
+            data = result.get("data")
+            if not isinstance(data, list):
+                raise RuntimeError("attachment upload response data must be an array")
+            if len(data) != len(items):
+                raise RuntimeError(
+                    f"attachment upload response count mismatch: expected {len(items)}, got {len(data)}"
+                )
+
+            required = {"storageKey", "name", "mimeType", "size", "sha256"}
+            mapping: dict[str, dict[str, Any]] = {}
+            for index, item in enumerate(data):
+                if not isinstance(item, dict):
+                    raise RuntimeError(f"attachment upload response item[{index}] is not an object")
+                missing = required - set(item)
+                if missing:
+                    raise RuntimeError(
+                        f"attachment upload response item[{index}] missing fields: {', '.join(missing)}"
+                    )
+                mapping[item["sha256"]] = item
+            return mapping
+    except urllib.error.HTTPError as e:
+        raise RuntimeError(f"attachment upload failed: HTTP {e.code} {e.reason}") from e
+    except urllib.error.URLError as e:
+        raise RuntimeError(f"attachment upload failed: {e.reason}") from e
+
+
+def _process_attachments(
+    paths: list[str],
+    api_url: str,
+    token: str,
+    feedback_id: str,
+    allow_storage: bool = True,
+) -> list[dict[str, Any]]:
+    """处理附件路径列表，返回可用于 payload 的 attachments 数组。
+
+    小文件直接 inline；所有大文件会合并为一次服务端批量上传请求。
+    """
+    attachments: list[dict[str, Any]] = []
+    large_items: list[tuple[Path, dict[str, Any]]] = []
+
+    # 第一轮：本地校验、分类、收集大文件
+    for raw_path in paths:
+        path = Path(raw_path).expanduser().resolve()
+        if not path.exists():
+            raise FileNotFoundError(f"attachment not found: {raw_path}")
+        if not path.is_file():
+            raise IsADirectoryError(f"attachment is not a file: {raw_path}")
+
+        try:
+            size = path.stat().st_size
+        except OSError as e:
+            raise RuntimeError(f"cannot stat attachment {raw_path}: {e}") from e
+
+        if size > MAX_ATTACHMENT_SIZE:
+            raise RuntimeError(
+                f"attachment too large ({size} bytes; max {MAX_ATTACHMENT_SIZE}): {raw_path}"
+            )
+
+        mime = _guess_mime_type(path)
+        if not any(mime.startswith(prefix) for prefix in ALLOWED_ATTACHMENT_MIME_PREFIXES):
+            raise ValueError(
+                f"attachment must be image or video (got {mime}): {raw_path}"
+            )
+
+        # 按服务端类型限制做前置检查，给出更清晰的错误
+        if mime.startswith("image/") and size > MAX_IMAGE_SIZE:
+            raise RuntimeError(
+                f"image {raw_path} ({size} bytes) exceeds server limit "
+                f"({MAX_IMAGE_SIZE} bytes); please compress or resize before uploading"
+            )
+        if mime.startswith("video/") and size > MAX_VIDEO_SIZE:
+            raise RuntimeError(
+                f"video {raw_path} ({size} bytes) exceeds server limit "
+                f"({MAX_VIDEO_SIZE} bytes); please use a shorter clip"
+            )
+
+        sha256 = _sha256_file(path)
+        metadata = {
+            "filename": path.name,
+            "mimeType": mime,
+            "size": size,
+            "sha256": sha256,
+        }
+
+        if size < ATTACHMENT_SIZE_THRESHOLD:
+            attachments.append(_encode_inline_attachment(path))
+        else:
+            if not allow_storage:
+                raise RuntimeError(
+                    f"attachment {raw_path} ({size} bytes) exceeds inline threshold "
+                    f"({ATTACHMENT_SIZE_THRESHOLD} bytes); use upload instead of submit"
+                )
+            large_items.append((path, metadata))
+
+    # 第二轮：一次性批量上传所有大文件
+    if large_items:
+        uploaded_map = _upload_attachments_via_server_batch(
+            large_items, api_url, token, feedback_id
+        )
+        for path, metadata in large_items:
+            uploaded = uploaded_map.get(metadata["sha256"])
+            if uploaded is None:
+                raise RuntimeError(
+                    f"attachment upload response missing result for {path.name} "
+                    f"(sha256: {metadata['sha256']})"
+                )
+            attachments.append({
+                "type": "storage",
+                "name": uploaded["name"],
+                "mimeType": uploaded["mimeType"],
+                "size": uploaded["size"],
+                "sha256": uploaded["sha256"],
+                "storageKey": uploaded["storageKey"],
+            })
+
+    return attachments
 
 
 def validate_payload(payload: Any) -> list[str]:
@@ -436,6 +702,47 @@ def validate_payload(payload: Any) -> list[str]:
                     errors.append("context.estimatedTokenUsage must be an integer")
                 elif estimated_token_usage < 0:
                     errors.append("context.estimatedTokenUsage must be >= 0")
+
+    attachments = payload.get("attachments")
+    if attachments is not None:
+        if not isinstance(attachments, list):
+            errors.append("attachments must be an array")
+        else:
+            for index, attachment in enumerate(attachments):
+                prefix = f"attachments[{index}]"
+                if not isinstance(attachment, dict):
+                    errors.append(f"{prefix} must be an object")
+                    continue
+                required = {"type", "name", "mimeType", "size", "sha256"}
+                missing = sorted(required - set(attachment))
+                if missing:
+                    errors.append(f"{prefix} missing required fields: {', '.join(missing)}")
+                    continue
+                att_type = attachment.get("type")
+                if att_type not in {"inline", "storage"}:
+                    errors.append(f"{prefix}.type must be 'inline' or 'storage'")
+                name = attachment.get("name")
+                if not isinstance(name, str) or not name.strip():
+                    errors.append(f"{prefix}.name must be a non-empty string")
+                mime = attachment.get("mimeType")
+                if not isinstance(mime, str) or not any(
+                    mime.startswith(prefix) for prefix in ALLOWED_ATTACHMENT_MIME_PREFIXES
+                ):
+                    errors.append(f"{prefix}.mimeType must be image/* or video/*")
+                size = attachment.get("size")
+                if isinstance(size, bool) or not isinstance(size, int) or size < 0:
+                    errors.append(f"{prefix}.size must be a non-negative integer")
+                sha256 = attachment.get("sha256")
+                if not isinstance(sha256, str) or not re.fullmatch(r"[0-9a-f]{64}", sha256):
+                    errors.append(f"{prefix}.sha256 must be a 64-character lowercase hex string")
+                if att_type == "inline":
+                    data = attachment.get("data")
+                    if not isinstance(data, str) or not data.strip():
+                        errors.append(f"{prefix}.data is required for inline attachments")
+                elif att_type == "storage":
+                    storage_key = attachment.get("storageKey")
+                    if not isinstance(storage_key, str) or not storage_key.strip():
+                        errors.append(f"{prefix}.storageKey is required for storage attachments")
 
     deprecated_fields = sorted(set(payload) & {"sanitizedTrajectory", "useCase"})
     if deprecated_fields:
@@ -641,6 +948,24 @@ def _command_submit(args: argparse.Namespace) -> int:
         print("error: submit requires --confirmed after the applicable user-review rule is satisfied", file=sys.stderr)
         return 2
     payload = _read_json_input(args.input)
+
+    # submit 是本地-only 命令，不允许走对象存储，只能接受 inline 小附件
+    attachment_paths = getattr(args, "attachment", []) or []
+    if attachment_paths:
+        try:
+            feedback_id = payload.get("feedbackId") or str(uuid.uuid4())
+            attachments = _process_attachments(
+                attachment_paths,
+                api_url=get_feedback_api_url(),
+                token=get_api_token(),
+                feedback_id=feedback_id,
+                allow_storage=False,
+            )
+            payload["attachments"] = attachments
+        except (FileNotFoundError, IsADirectoryError, RuntimeError, ValueError) as e:
+            print(f"error: {e}", file=sys.stderr)
+            return 2
+
     errors = validate_payload(payload)
     if errors:
         for error in errors:
@@ -704,6 +1029,22 @@ def _command_upload(args: argparse.Namespace) -> int:
         payload = record
         submitted_at = _iso_utc(datetime.now(timezone.utc))
         consent = {"confirmed": True, "confirmedAt": submitted_at}
+
+    # 处理附件：小文件 inline，大文件通过预签名 URL 上传到对象存储
+    attachment_paths = getattr(args, "attachment", []) or []
+    if attachment_paths:
+        try:
+            attachments = _process_attachments(
+                attachment_paths,
+                api_url=get_feedback_api_url(),
+                token=get_api_token(),
+                feedback_id=feedback_id,
+                allow_storage=True,
+            )
+            payload["attachments"] = attachments
+        except (FileNotFoundError, IsADirectoryError, RuntimeError, ValueError) as e:
+            print(f"error: {e}", file=sys.stderr)
+            return 2
 
     # 对所有输入执行统一校验和脱敏检查（无论来源格式）
     errors = validate_payload(payload)
@@ -808,6 +1149,12 @@ def build_parser() -> argparse.ArgumentParser:
     submit.add_argument("--input", required=True, help="Approved sanitized JSON path, or - for stdin")
     submit.add_argument("--outbox", default=str(DEFAULT_OUTBOX), help="Local JSONL outbox path")
     submit.add_argument(
+        "--attachment",
+        action="append",
+        default=[],
+        help="Local file path to attach (repeatable); only files under the inline threshold are allowed for submit",
+    )
+    submit.add_argument(
         "--confirmed",
         action="store_true",
         help="Assert that the applicable user-review and consent requirements were satisfied",
@@ -817,6 +1164,12 @@ def build_parser() -> argparse.ArgumentParser:
     upload = subparsers.add_parser("upload", help="Upload feedback from input file to remote server")
     upload.add_argument("--input", required=True, help="Feedback JSON path, or - for stdin")
     upload.add_argument("--outbox", help="Optional: also save to local outbox path on success/failure")
+    upload.add_argument(
+        "--attachment",
+        action="append",
+        default=[],
+        help="Local file path to attach (repeatable); small files are inline, large files use a presigned URL",
+    )
     upload.add_argument(
         "--confirmed",
         action="store_true",

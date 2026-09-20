@@ -249,7 +249,7 @@ MIT — free to use, modify, and distribute with attribution. See [LICENSE](LICE
 
 ## Feedback & Privacy
 
-When you choose to rate a Skill, we upload `usageScenario`, `skillPerformance`, `rating`, `comment`, and under `context`: `agentType`, `occurredAt`, `trajectoryIdHash`, and `estimatedTokenUsage`.
+When you choose to rate a Skill, we upload `usageScenario`, `skillPerformance`, `rating`, `comment`, and under `context`: `agentType`, `occurredAt`, `trajectoryIdHash`, and `estimatedTokenUsage`. You may also attach images or videos; small files are sent inline and larger files are uploaded directly to object storage via a presigned URL, with only the file name (not the local path) submitted.
 
 All feedback content is first processed by a deterministic redaction script; the raw trajectory is never uploaded. `estimatedTokenUsage` is an integer estimate by the Agent of how many tokens the Skill execution consumed. It is not sensitive personal information, but it is submitted to the server along with the rest of the feedback.
 
