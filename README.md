@@ -73,8 +73,13 @@ Every Skill describes what it claims to do; few tell you how it actually behaves
 | Rarely shows runs, failures, and output quality | Synthesizes success/failure records, output quality, latency, and cost |
 | Tells you "what everyone is looking at" | **Through real application cases**, tells you how a Skill actually performed "in similar scenarios" |
 
+## Skill Review
 deep-skill-finder introduces a dedicated **real-user review** module — not context-free star ratings; one review centers on a concrete task.
-> Recording the usage scenario, Skill performance, and the rating, plus context such as Agent type, occurrence time, and estimated token usage. Images or videos can be attached when needed: small files go inline in the feedback JSON, while larger files upload to object storage via a server-issued presigned URL — only the file name is submitted, never the local path.
+
+![deep-skill-finder](assets/en/feedback.png)
+
+> A skill review records the usage scenario, Skill performance, and the rating, plus context such as Agent type, occurrence time, and estimated token usage.       
+> Images or videos can be attached when needed: small files go inline in the feedback JSON, while larger files upload to object storage via a server-issued presigned URL — only the file name is submitted, never the local path.
 
 A complete Skill-execution feedback record contains:
 ```
