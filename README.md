@@ -47,16 +47,53 @@ DSF returns a ranked TOP-5 with reasons. Confirm a number → installation compl
 
 ## Why deep-skill-finder
 
-Using an Agent requires installing Skills. But which Skill actually works on **your specific task**?
+The Skill ecosystem is growing fast. The problem is no longer a lack of tools — it's increasingly hard to tell: **which Skill truly fits my specific task?**
 
-**Two problems every Agent user hits:**
+Traditional Skill directories show names, creator descriptions, downloads, and stars. These tell you whether a Skill is discoverable or popular, but they can't answer:
 
-- **Can't find what you need.** Creators write broad, abstract descriptions to rank in more searches. Your specific need gets buried under noise.
-- **Can't trust what you find.** Downloads and star ratings can't prove a Skill actually ran correctly. You install one, it crashes on your task, you uninstall, you try another. 20 minutes later, you're still looking.
+- Has it actually run on tasks like yours? How were the results, latency, and token cost?
+- Which Agents, environments, and workflows does it fit? Does it need extra credentials or complex setup?
+- Where does it fail?
 
-**deep-skill-finder solves both.** Install once — your Agent handles Skill discovery, evaluation, and installation autonomously, ranking by real community runs and task-fit — not by download counts.
+Every Skill describes what it claims to do; few tell you how it actually behaves. The real problem isn't just "can I find it" — after finding candidates, you still lack grounds to choose:
 
-*See 3 real cases below ↓*
+- **Relevant is not the same as suitable.** A Skill's name and description suggest what it *might* do, not whether it actually works well in your specific Agent, task, and environment.
+- **Real performance depends on the scenario.** The same Skill can produce completely different results across tasks, Agents, and environments. Context-free generic ratings rarely help you judge fit.
+- **Popularity is not performance.** Downloads and stars reflect attention, not whether a Skill runs, the quality of its output, or where it has failed in real scenarios.
+
+## deep-skill-finder vs Others
+
+**deep-skill-finder combines professional retrieval with real-scenario feedback.** It first understands your task and constraints to find genuinely relevant candidates from the whole-Skill web; then draws on real usage feedback from similar tasks to help you make the final choice.
+
+| Typical Skill directory | deep-skill-finder |
+| --- | --- |
+| Search by name, tags, and keywords | Understands task intent, capability direction, and execution conditions |
+| Shows the creator's self-description | Adds real usage feedback: actual performance, execution results, key facts |
+| Measures popularity with downloads and stars | Shows real performance across specific tasks, Agents, and environments |
+| Rarely shows runs, failures, and output quality | Synthesizes success/failure records, output quality, latency, and cost |
+| Tells you "what everyone is looking at" | **Through real application cases**, tells you how a Skill actually performed "in similar scenarios" |
+
+deep-skill-finder introduces a dedicated **real-user review** module — not context-free star ratings; one review centers on a concrete task.
+> Recording the usage scenario, Skill performance, and the rating, plus context such as Agent type, occurrence time, and estimated token usage. Images or videos can be attached when needed: small files go inline in the feedback JSON, while larger files upload to object storage via a server-issued presigned URL — only the file name is submitted, never the local path.
+
+A complete Skill-execution feedback record contains:
+```
+usageScenario (usage context)
+
+Add a skill-review and experience-gallery module to an existing Vue 3 + Vite app, reusing the existing navigation, theme, and responsive style, while keeping pages, presentation components, APIs, state management, and data access independent — with type checks, tests, and a production build all passing.
+
+skillPerformance (how the Skill performed)
+
+vue-patterns provided conventions for feature-first directory organization, the Composition API, container/presentation component separation, reactive state selection, lazy-loaded routes, and testing. The implementation followed it to split out route pages, dedicated presentation components, a server-state composable, the API, types, and a local repository; server data is managed with Vue Query and components communicate via typed props/emit. The code passed ESLint, type checks, module tests, and the production build — no exceptions, timeouts, or retries attributable to the Skill itself were observed. The Skill does not cover the existing product's visual spec, business interaction design, or browser acceptance testing; those parts still required reading the existing code and human judgment.
+
+userFeedback (user review)
+9/10 — this skill showed solid UI style consistency; well suited for front-end work that adds new pages or modules
+
+Attachments (optional)
+Screenshots, screen recordings, and other image/video files
+```
+
+This real-review information helps surface Skills that are more suitable, safer, and more effective — and helps users **spot risks in advance**. See 3 real cases below ↓
 
 ---
 
@@ -76,45 +113,110 @@ Using an Agent requires installing Skills. But which Skill actually works on **y
 
 ---
 
-## How it works 
-> 8 layers of ranking intelligence and Final intelligence synthesis
+## How it works: professional retrieval + real reviews, 8 layers of ranking
 
-deep-skill-finder goes beyond keyword matching. It evaluates every candidate through eight layers of judgment, prioritizing real capability and task fit over surface-level similarity.
+deep-skill-finder's recommendation is not a single keyword ranking — it runs in two stages:
+> 1. **Professional retrieval**: understand the task the user actually wants done, and find capability-relevant, direction-correct, execution-ready candidates from across the web.
+> 2. **Real-review ranking**: put candidates back into concrete usage scenarios, and combine real users' execution process, results, and reviews to judge which Skill fits the current task best.
 
 ```
-User describes task in natural language
-            │
-            ▼
-    Intent understanding
-  (rewrite → semantic query)
-            │
-            ▼
-      Multi-channel recall
-  ┌─────────┬──────────────┐
-  │ Skill   │  Community   │
-  │ profile │  test posts  │
-  └────┬────┴──────┬───────┘
-       └─────┬─────┘
-             ▼
-   8-rule semantic ranking
-   → TOP 5 with reasons
-             │
-             ▼
-   Confirm number → auto-install → run → feedback loop
+User describes the task in natural language
+              │
+              ▼
+    Task understanding & query rewrite
+ (goal · I/O · direction · constraints · environment)
+              │
+              ▼
+┌──────────────────────────────────────────┐
+│  Professional retrieval (coarse):        │
+│           multi-channel recall           │
+│                                          │
+│  ① Skill metadata similarity recall      │
+│  ② SKILL.md / description content recall │
+│  ③ Feedback real-review similarity recall│
+└──────────────┬───────────────────────────┘
+               │
+               ▼
+      Merge · dedupe · coarse ranking
+               │
+               ▼
+┌──────────────────────────────────────────┐
+│     Fine rank: Rerank + review check     │
+│                                          │
+│  Task match: capability · direction ·    │
+│               completeness               │
+│  Execution: environment · dependencies · │
+│              feasibility                 │
+│                                          │
+│  Real-review verification:               │
+│    usageScenario   similar context       │
+│    skillPerformance process & results    │
+│    userFeedback    rating & sentiment    │
+│                                          │
+│  Synthesize success, failure, quality,   │
+│  risk & cost                             │
+└──────────────┬───────────────────────────┘
+               │
+               ▼
+  TOP 5 + reasons + scenario evidence + risks
+               │
+               ▼
+      User confirms → install → execute
+                         │
+                         ▼
+           User voluntarily leaves a review
+                         │
+                         ▼
+                     Redaction
+                         │
+                         ▼
+             New real-review evidence
+                         │
+                         ├────→ Feedback similarity recall
+                         └────→ Rerank review verification
 ```
 
-1. **Meta-intent awareness** — When you are looking for a skill-discovery tool itself, deep-skill-finder recognizes that intent and puts the right meta-skill first.
-2. **Capability-first matching** — Structured capability data takes priority over promotional descriptions, so rankings reflect what a skill can actually do.
-3. **Intent-direction reasoning** — It understands that “A → B” is not the same as “B → A,” preventing reversed workflows from ranking highly.
-4. **Execution readiness** — Relevant but impractical skills are demoted when they depend on hidden credentials, complex setup, or non-executable documentation.
-5. **Multi-intent coverage** — For complex requests, skills that cover more of the end-to-end workflow rank above narrow, single-step tools.
-6. **Community corroboration** — Community posts count only when they provide evidence aligned with the user’s actual intent.
-7. **Contradiction filtering** — Fundamentally mismatched candidates are removed, even when they share similar keywords.
-8. **Popularity in its proper place** — Download count helps break close ties, but never outweighs capability, direction, or task fit.
- 
-**Final intelligence synthesis** — A reasoning-driven reranker synthesizes every signal into a holistic final judgment, delivering up to five high-confidence recommendations with clear, decision-ready rationales.
+### Stage 1: find relevant candidates through professional retrieval
 
-Once installed, the loop runs autonomously: **identify → recall → confirm → execute → feedback**. Each match gets more accurate over time.
+1. **Task-intent understanding** — identify the user's real goal, plus inputs, outputs, workflow direction, and environment requirements.
+2. **Capability & direction matching** — prioritize structured capability data, distinguishing "A → B" from "B → A" to avoid false hits on keyword similarity.
+3. **Execution-condition check** — does the Skill need extra credentials, complex setup, or a specific runtime; can it cover the full task.
+4. **Fundamental-conflict filtering** — remove candidates whose capability direction, usage conditions, or task goals clearly conflict.
+
+### Stage 2: re-judge and re-rank through real reviews
+
+5. **Similar-scenario priority** — compare `usageScenario` in reviews. The closer the task goal, Agent type, and environment to your current need, the higher the review's reference value.
+6. **Real execution results** — analyze `skillPerformance`: did the Skill actually run, which steps did it complete, did it pass tests, builds, or result verification.
+7. **Output quality & user sentiment** — combine `userFeedback` to judge whether the output meets quality, style, and business requirements — not just "ran successfully".
+8. **Risk, limits, and cost** — surface dead endpoints, exceptions, timeouts, extra dependencies, capability boundaries, latency, and token cost from reviews, demoting high-risk candidates.
+
+### How do real reviews affect the final ranking?
+
+DSF doesn't simply sort by score. A review must first match the current task scenario before it counts as evidence:
+
+- Execution feedback from similar tasks beats high scores from irrelevant scenarios;
+- Feedback with a clear execution process and verified results is more credible than a generic "works great";
+- Successful runs, result quality, and user endorsement strengthen a recommendation;
+- Dead endpoints, environment conflicts, and explicit failure records demote or filter candidates;
+- Downloads are only a tie-breaker when capability and real performance are close — they never override real execution evidence.
+
+Finally, DSF synthesizes professional retrieval with real reviews into at most 5 high-confidence recommendations, explaining:
+
+- why it fits the current task;
+- what similar scenarios it has run in;
+- how it actually performed and what users said;
+- what risks to note before install or execution.
+
+**Professional retrieval answers "which Skills might fit"; real reviews answer "which Skills have proven themselves in similar scenarios."**
+
+Real reviews work twice in the recommendation pipeline:
+
+- **Recall stage:** feedback is a third recall channel, surfacing Skills that are hard to find by name or description but have actually been used in similar tasks.
+- **Rerank stage:** the reranker uses usage scenario, execution performance, and user feedback to verify whether candidates truly fit the current task, adjusting ranking by success, failure, quality, risk, and cost.
+
+This forms a complete recommendation loop: **task understanding → multi-channel recall → merge & coarse ranking → rerank verification → user confirmation → install & execute → real-review backflow**.
+
+Every real usage a user is willing to share is more than a download number. It helps the system discover more Skills that fit similar tasks, and becomes evidence of real performance for the next ranking.
 
 ---
 
@@ -185,7 +287,7 @@ python3 scripts/deep_skill_install.py --dir ~/.catpaw/skills --list
 ## Common questions
 
 **Q: Isn't downloads/stars a good enough signal?**
-A: Downloads and stars tell you what's *popular* — not what runs on *your specific task*. DSF ranks by capability match + real community runs. Ranking rule #8 explicitly caps download count as a tie-breaker only, never as the primary signal.
+A: Downloads and stars tell you what's *popular* — not what runs on *your specific task*. DSF ranks by capability match + real community runs. Download count acts only as a tie-breaker when capability and real performance are close — never as the primary signal.
 
 **Q: How is real-scenario feedback different from ordinary ratings?**
 A: Ordinary ratings compress experiences across different users, tasks, and environments into a single number. DSF preserves the scenario information that matters for judgment, so the Agent can tell whether a piece of feedback is actually relevant to your current task, environment, and goals.
