@@ -2,9 +2,9 @@
 
 # deep-skill-finder
 
-**不只找到 Skill，更知道它在真实任务里表现如何。**
+**真测, 真评价, 找到真好用的技能**
 
-*面向 AI Agent 的真实场景 Skill Market。通过专业检索理解你的任务，结合真实用户的实际运行反馈，从 200k+ Skill 生态中找到真正适合当前场景的 Skill。*
+*面向AIAgent真实场景的Skill Market。通过专业检索+理解，结合真实用户实际运行反馈，从200k+Skill生态中一键抵达「实测验证」过的技能*。
 
 ![deep-skill-finder](assets/background.png)
 
