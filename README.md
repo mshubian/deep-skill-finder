@@ -2,15 +2,15 @@
 
 # deep-skill-finder
 
-**Install once. Your Agent picks the skill that runs — not the one that ranks.**
+**Real Tests, Real Reviews find skills that Real Work**
 
-*An Agentic skill discovery engine. Your Claude Code / Codex / OpenClaw / Cursor auto-discovers the right skill from a 50k+ ecosystem — for every task.*
+*An Agentic skill discovery engine. Your Claude Code / Codex / OpenClaw / Cursor auto-discovers the right skill from a 200k+ ecosystem — for every task.*
 
 ![deep-skill-finder](assets/background.png)
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![Live in 40+ Agents](https://img.shields.io/badge/live%20in-40%2B%20AI%20Agents-8A2BE2.svg)](#ecosystem-status)
-[![Skills](https://img.shields.io/badge/skills-50k%2B-brightgreen.svg)](https://www.deepskill.market/skill)
+[![Skills](https://img.shields.io/badge/skills-200k%2B-brightgreen.svg)](https://www.deepskill.market/skill)
 
 English | [中文](README.zh.md)
 
@@ -28,7 +28,20 @@ https://www.deepskill.market/api/v1/skill-finder, extract to local skills
 directory, and enable it.
 ```
 
-That's it — install typically completes in 15-30 seconds. Don't like it? [Uninstall anytime](#scripts-reference) with one command. Next time your Agent needs a skill, DSF will find candidates and ask you before installing.
+That's it — install typically completes in 15-30 seconds. Don't like it? [Uninstall anytime](#uninstall--list) with one command. Next time your Agent needs a skill, DSF will find candidates and ask you before installing.
+
+### Use
+
+Talk to your Agent naturally. When a task needs an external Skill, DSF triggers automatically:
+
+```
+"Find me a skill that builds interactive dashboards from a CSV"
+"Is there a skill for pulling stock market data?"
+"Recommend a skill for translating technical docs into plain English"
+"Set up a CI/CD pipeline that runs on every PR"
+```
+
+DSF returns a ranked TOP-5 with reasons. Confirm a number → installation completes automatically.
 
 ---
 
@@ -68,69 +81,6 @@ Using an Agent requires installing Skills. But which Skill actually works on **y
 
 deep-skill-finder goes beyond keyword matching. It evaluates every candidate through eight layers of judgment, prioritizing real capability and task fit over surface-level similarity.
 
-1. **Meta-intent awareness** — When you are looking for a skill-discovery tool itself, deep-skill-finder recognizes that intent and puts the right meta-skill first.
-2. **Capability-first matching** — Structured capability data takes priority over promotional descriptions, so rankings reflect what a skill can actually do.
-3. **Intent-direction reasoning** — It understands that “A → B” is not the same as “B → A,” preventing reversed workflows from ranking highly.
-4. **Execution readiness** — Relevant but impractical skills are demoted when they depend on hidden credentials, complex setup, or non-executable documentation.
-5. **Multi-intent coverage** — For complex requests, skills that cover more of the end-to-end workflow rank above narrow, single-step tools.
-6. **Community corroboration** — Community posts count only when they provide evidence aligned with the user’s actual intent.
-7. **Contradiction filtering** — Fundamentally mismatched candidates are removed, even when they share similar keywords.
-8. **Popularity in its proper place** — Download count helps break close ties, but never outweighs capability, direction, or task fit.
- 
-**Final intelligence synthesis** — A reasoning-driven reranker synthesizes every signal into a holistic final judgment, delivering up to five high-confidence recommendations with clear, decision-ready rationales.
-
----
-
-## Ecosystem status
-
-deep-skill-finder works out of the box across **40+ Agent runtimes** — no matter which Agent you use, it fits:
-
-- Claude Code · Codex · Cursor · Windsurf · Cline
-- WorkBuddy · OpenClaw · CatDesk · Hermes
-- Copilot · Gemini · Antigravity · Amp
-- + 28 more
-
-**30-day active data** *(2026-08 · updated monthly)*:
-- 40+ distinct `agentType` clients calling DSF
-- **Top skills installed by real users through DSF** (each verified by 10+ distinct client installations):
-  - `desktop-pet` (116 clients) · `ppt-maker` (115) · `product-compare` (102) · `business-plan` (81) · `amazon-a-plus-content` (78)
-
----
-
-## Quick Start
-
-### Prerequisites
-- A running Agent (Claude Code / Codex / Cursor / any of the 40+ supported clients)
-
-### Install in your Agent
-
-Send this prompt directly to your Agent:
-
-```
-Please install the deep-skill-finder skill: download the skill package from
-https://www.deepskill.market/api/v1/skill-finder, extract it to the local skills
-directory, and enable it.
-```
-
-The Agent handles download, extraction, and enablement automatically.
-
-### Use
-
-Talk to your Agent naturally. When a task needs an external Skill, DSF triggers automatically:
-
-```
-"Find me a skill that builds interactive dashboards from a CSV"
-"Is there a skill for pulling stock market data?"
-"Recommend a skill for translating technical docs into plain English"
-"Set up a CI/CD pipeline that runs on every PR"
-```
-
-DSF returns a ranked TOP-5 with reasons. Confirm a number → installation completes automatically.
-
----
-
-## Architecture
-
 ```
 User describes task in natural language
             │
@@ -153,17 +103,54 @@ User describes task in natural language
    Confirm number → auto-install → run → feedback loop
 ```
 
+1. **Meta-intent awareness** — When you are looking for a skill-discovery tool itself, deep-skill-finder recognizes that intent and puts the right meta-skill first.
+2. **Capability-first matching** — Structured capability data takes priority over promotional descriptions, so rankings reflect what a skill can actually do.
+3. **Intent-direction reasoning** — It understands that “A → B” is not the same as “B → A,” preventing reversed workflows from ranking highly.
+4. **Execution readiness** — Relevant but impractical skills are demoted when they depend on hidden credentials, complex setup, or non-executable documentation.
+5. **Multi-intent coverage** — For complex requests, skills that cover more of the end-to-end workflow rank above narrow, single-step tools.
+6. **Community corroboration** — Community posts count only when they provide evidence aligned with the user’s actual intent.
+7. **Contradiction filtering** — Fundamentally mismatched candidates are removed, even when they share similar keywords.
+8. **Popularity in its proper place** — Download count helps break close ties, but never outweighs capability, direction, or task fit.
+ 
+**Final intelligence synthesis** — A reasoning-driven reranker synthesizes every signal into a holistic final judgment, delivering up to five high-confidence recommendations with clear, decision-ready rationales.
+
 Once installed, the loop runs autonomously: **identify → recall → confirm → execute → feedback**. Each match gets more accurate over time.
+
+---
+
+## Ecosystem status
+
+deep-skill-finder works out of the box across **40+ Agent runtimes** — no matter which Agent you use, it fits:
+
+- Claude Code · Codex · Cursor · Windsurf · Cline
+- WorkBuddy · OpenClaw · CatDesk · Hermes
+- Copilot · Gemini · Antigravity · Amp
+- + 28 more
+
+**30-day active data** *(2026-08 · updated monthly)*:
+- 40+ distinct `agentType` clients calling DSF
+- **Top skills installed by real users through DSF** (each verified by 10+ distinct client installations):
+  - `desktop-pet` (116 clients) · `ppt-maker` (115) · `product-compare` (102) · `business-plan` (81) · `amazon-a-plus-content` (78)
 
 ---
 
 ## Project structure
 
 ```
-├── SKILL.md                  # Skill definition (Agent reads this)
-└── scripts/
-    ├── deep_skill_search.py  # Semantic search via Meyo retrieval service
-    └── deep_skill_install.py # Download and install Skills locally
+├── .gitignore                      # Git ignore rules
+├── README.md                       # English documentation
+├── README.zh.md                    # Chinese documentation
+├── SKILL.md                        # Skill definition & full Agent workflow
+├── assets/                         # README visual assets
+├── references/
+│   └── skill-evaluation.md         # Real-use evaluation, confirmation & privacy spec
+├── scripts/
+│   ├── deep_skill_search.py        # Search & rank Skills via the retrieval service
+│   ├── deep_skill_install.py       # Download, install & manage Skills
+│   └── skill_feedback.py           # Evaluation discovery, redaction, validation, save & upload
+└── tests/
+    ├── test_deep_skill_search.py   # Search pipeline tests
+    └── test_skill_feedback.py      # Real-evaluation pipeline & safety rule tests
 ```
 
 ## Scripts reference
@@ -178,6 +165,8 @@ python3 scripts/deep_skill_search.py "your task description" [--agent-type openc
 Search failures return a non-zero exit status and a structured `error.code` such as
 `search_timeout`, `search_network_error`, or `search_service_error`. A successful search with
 no matches still exits normally with an empty `community` list.
+
+### Uninstall & List
 
 **Install / Uninstall / List:**
 ```bash
@@ -197,6 +186,15 @@ python3 scripts/deep_skill_install.py --dir ~/.catpaw/skills --list
 
 **Q: Isn't downloads/stars a good enough signal?**
 A: Downloads and stars tell you what's *popular* — not what runs on *your specific task*. DSF ranks by capability match + real community runs. Ranking rule #8 explicitly caps download count as a tie-breaker only, never as the primary signal.
+
+**Q: How is real-scenario feedback different from ordinary ratings?**
+A: Ordinary ratings compress experiences across different users, tasks, and environments into a single number. DSF preserves the scenario information that matters for judgment, so the Agent can tell whether a piece of feedback is actually relevant to your current task, environment, and goals.
+
+**Q: Where does real-scenario feedback come from?**
+A: From real executions and voluntary reviews by users who picked a Skill through DSF. Each review describes the specific usage scenario and the Skill's performance with the necessary run context — not just a generic thumbs-up or thumbs-down.
+
+**Q: Will my full task logs be uploaded?**
+A: No. Feedback content goes through deterministic redaction first, and the raw trajectory is never uploaded. See [Feedback & Privacy](#feedback--privacy) for exactly what is submitted.
 
 **Q: "A skill that installs other skills" — is this recursion? Is it safe?**
 A: No — DSF only *recommends* skills. Every install requires your explicit confirmation before anything happens on your machine. Each recommended skill passes security audit and quality checks before reaching you.
