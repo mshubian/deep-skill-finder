@@ -1,6 +1,6 @@
 <div align="center">
 
-# deep-skill-finder : [deepskill.market](https://www.deepskill.market)
+# deep-skill-finder : [deepskill.market](https://www.deepskill.market?ref=github)
 
 **Real Tests, Real Reviews find skills that Real Work**
 
